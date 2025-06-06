@@ -1,0 +1,47 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+application {
+    mainClassName = 'com.example.App'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
+
+task buildProject(type: GradleBuild) {
+    doLast {
+        println 'Running build task'
+    }
+}
+
+task testProject(type: Test) {
+    doLast {
+        println 'Running test task'
+    }
+}
+
+task deployProject {
+    doLast {
+        println 'Running deploy task'
+    }
+}
+
+// Making build task depend on buildProject for standard lifecycle
+tasks.named('build') {
+    dependsOn buildProject
+}
+
+// Making test task depend on testProject for standard lifecycle
+tasks.named('test') {
+    dependsOn testProject
+}
+
+// Convention for deploy task
+task deploy(dependsOn: deployProject)
