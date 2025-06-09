@@ -1,33 +1,76 @@
-def call(Map params) {
-    echo "Starting Pact contract publishing for app: ${params.applicationName}, version: ${params.version}"
+import com.example.ConfigUtils
 
-    // Validate required parameters
-    if (!params.brokerBaseUrl || !params.brokerTokenCredentialId || !params.applicationName || !params.version || !params.pactFilesDir) {
-        error "ERROR: Missing required parameters for publishPactContracts. Must include: brokerBaseUrl, brokerTokenCredentialId, applicationName, version, pactFilesDir"
+def call(Map params) {
+    echo "[publishPactContracts] Starting Pact contract publishing process."
+
+    // Define workspace directory, default to current directory if not provided
+    String workspaceDir = params.workspaceDir ?: '.'
+
+    // Load external configuration from pactConfig.groovy if it exists
+    // 'this' refers to the current script object (Jenkins pipeline context)
+    Map pactFileConfig = ConfigUtils.loadPactConfig(this, workspaceDir)
+
+    // Resolve parameters: Direct params > pactFileConfig > Dynamic fallbacks
+    String appName = params.applicationName ?: pactFileConfig.applicationName ?: env.JOB_NAME
+    String appVersion = params.version ?: pactFileConfig.version ?: env.BUILD_NUMBER ?: "0.0.0-SNAPSHOT"
+    // pactFilesDir from config should be relative to workspaceDir, or an absolute path.
+    // If pactFilesDir is relative, it will be resolved correctly by sh step assuming workspaceDir is current dir.
+    String pactDir = params.pactFilesDir ?: pactFileConfig.pactFilesDir ?: 'pacts'
+    String brokerUrl = params.brokerBaseUrl ?: pactFileConfig.brokerBaseUrl
+    String tokenCredId = params.brokerTokenCredentialId ?: pactFileConfig.brokerTokenCredentialId // Allow token ID from config file
+
+    def rawTags = params.tags ?: pactFileConfig.tags
+    String tagsString = ""
+    if (rawTags) {
+        if (rawTags instanceof List) {
+            tagsString = rawTags.join(',')
+        } else {
+            tagsString = rawTags.toString()
+        }
     }
 
-    withCredentials([string(credentialsId: params.brokerTokenCredentialId, variable: 'PACT_BROKER_TOKEN')]) {
-        // Construct the pact-broker publish command
-        def command = "pact-broker publish ${params.pactFilesDir}"
-        command += " --consumer-app-version ${params.version}"
-        command += " --broker-base-url ${params.brokerBaseUrl}"
-        command += " --broker-token \$PACT_BROKER_TOKEN" // Use the environment variable
+    // --- Mandatory Parameter Validation ---
+    if (!tokenCredId) {
+        error "[publishPactContracts] ERROR: brokerTokenCredentialId parameter is required (either direct or in pactConfig.groovy)."
+    }
+    if (!brokerUrl) {
+        error "[publishPactContracts] ERROR: Pact Broker URL (brokerBaseUrl) must be provided (either direct or in pactConfig.groovy)."
+    }
+    if (!appName) {
+        // Should ideally not happen if JOB_NAME is always available as a fallback
+        error "[publishPactContracts] ERROR: Application name (applicationName) must be provided or derivable."
+    }
+     if (!pactDir) {
+        // Should not happen due to default 'pacts'
+        error "[publishPactContracts] ERROR: Pact files directory (pactFilesDir) must be provided or have a default."
+    }
 
-        // Add tags if provided
-        if (params.tags && !params.tags.isEmpty()) {
-            command += " --tag '${params.tags}'" // Enclose tags in single quotes if they might contain spaces or special chars handled by shell
+
+    echo "[publishPactContracts] Effective settings: AppName='${appName}', Version='${appVersion}', PactDir='${pactDir}', BrokerURL='${brokerUrl}', Tags='${tagsString ?: 'none'}'"
+
+    withCredentials([string(credentialsId: tokenCredId, variable: 'PACT_BROKER_TOKEN')]) {
+        // Construct the pact-broker publish command using resolved variables
+        // Ensure pactDir is treated as relative to the workspace by the sh step
+        def command = "pact-broker publish \"${pactDir}\"" // Quote pactDir in case it contains spaces
+        command += " --consumer-app-version \"${appVersion}\"" // Quote version
+        command += " --broker-base-url \"${brokerUrl}\"" // Quote URL
+        command += " --broker-token \$PACT_BROKER_TOKEN"
+
+        if (tagsString && !tagsString.isEmpty()) {
+            command += " --tag \"${tagsString}\"" // Quote tags
         }
 
-        echo "Publishing Pact contracts with command: ${command}" // Log the command without the token for security
+        // Log the command without the token for security (already done by echo above for effective settings)
+        echo "[publishPactContracts] Executing command..." // Token will not be printed by sh step by default
 
         try {
-            // Check if pact-broker CLI is available (optional, but good practice)
-            // sh "command -v pact-broker >/dev/null 2>&1 || { echo 'ERROR: pact-broker CLI not found or not in PATH.'; exit 1; }"
+            // It's good practice to ensure the CLI is installed.
+            // A user might add: sh "command -v pact-broker >/dev/null 2>&1 || { echo 'ERROR: pact-broker CLI not found.'; exit 1; }"
 
             sh command
-            echo "Pact contract publishing completed successfully for ${params.applicationName} version ${params.version}."
+            echo "[publishPactContracts] Pact contract publishing completed successfully for ${appName} version ${appVersion}."
         } catch (Exception e) {
-            error "ERROR: Pact contract publishing failed for ${params.applicationName} version ${params.version}. Details: ${e.getMessage()}"
+            error "[publishPactContracts] ERROR: Pact contract publishing failed for ${appName} version ${appVersion}. Details: ${e.getMessage()}"
         }
     }
 }
