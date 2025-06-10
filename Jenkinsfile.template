@@ -1,0 +1,48 @@
+@Library('my-shared-library@main') _ // Ensure 'my-shared-library' matches your Jenkins Global Pipeline Library name
+                                   // '@main' assumes you are working on the main branch of the shared library.
+                                   // Adjust if using a different branch or version tag.
+
+/**
+ * Standard Pipeline Configuration
+ *
+ * This map is passed to the `standardPipeline` function from the shared library.
+ * You can customize pipeline behavior by setting these parameters.
+ */
+def pipelineConfig = [
+  /**
+   * (Optional) The directory within the Jenkins workspace where the application code
+   * (and its build files like build.gradle, pom.xml, package.json) is located.
+   * If your Jenkins job checks out the code directly into the workspace root,
+   * and your build files are at the root, this can be '.' or omitted.
+   * If your code is in a subdirectory (e.g., if your job checks out a repo that
+   * contains 'sample-app/' as the actual project), set this to that subdirectory path.
+   * For the current project structure, if the Jenkins job checks out the entire
+   * 'jenkins-pipelines' repository, this should be 'sample-app'.
+   */
+  workspaceDir: 'sample-app', // Adjust if your project is at the root or in a different subfolder
+
+  /**
+   * (Required for Pact Publishing) Jenkins credential ID for the Pact Broker token.
+   * This should be a "Secret Text" credential configured in Jenkins.
+   */
+  pactBrokerTokenCredentialId: 'pact-broker-token', // Replace with your actual Jenkins credential ID
+
+  /**
+   * (Optional) Directory where pactConfig.groovy is located, relative to the Jenkins job workspace root.
+   * This is used by the publishPactContracts step.
+   * If pactConfig.groovy is in the same directory as your main build file (e.g. sample-app/pactConfig.groovy),
+   * this should be the same as workspaceDir.
+   * Note: The `publishPactContracts` function has its own `workspaceDir` parameter which defines
+   * where it looks for `pactConfig.groovy`. If `pipelineConfig.workspaceDir` (this setting)
+   * points to your app's root (e.g., 'sample-app'), and `pactConfig.groovy` is also in 'sample-app',
+   * then you'd pass `pipelineConfig.workspaceDir` to `publishPactContracts`'s `workspaceDir`.
+   */
+  // pactConfigWorkspaceDir: 'sample-app', // This specific entry might be redundant if publishPactContracts's workspaceDir is set using pipelineConfig.workspaceDir
+
+  // Add other future global configurations here, for example:
+  // mailRecipients: 'team@example.com',
+  // slackChannel: '#ci-alerts'
+]
+
+// Execute the standard pipeline defined in the shared library
+standardPipeline(pipelineConfig)
