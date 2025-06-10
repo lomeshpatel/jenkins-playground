@@ -1,0 +1,42 @@
+@Library('my-shared-library@main') _ // Ensure 'my-shared-library' matches your Jenkins Global Pipeline Library name
+                                   // '@main' assumes you are working on the main branch of the shared library.
+                                   // Adjust if using a different branch or version tag.
+
+/**
+ * Standard Pipeline Configuration
+ *
+ * This map is passed to the `standardPipeline` function from the shared library.
+ * You can customize pipeline behavior by setting these parameters.
+ */
+def pipelineConfig = [
+  /**
+   * (Required) The directory within the Jenkins workspace where the application code
+   * (and its build files like build.gradle, pom.xml, package.json) is located.
+   * Since this Jenkinsfile is located at the root of the 'sample-app' checkout (or context),
+   * '.' means the current directory ('sample-app').
+   */
+  workspaceDir: '.',
+
+  /**
+   * (Required for Pact Publishing) Jenkins credential ID for the Pact Broker token.
+   * This should be a "Secret Text" credential configured in Jenkins.
+   */
+  pactBrokerTokenCredentialId: 'pact-broker-token', // Replace with your actual Jenkins credential ID
+
+  /**
+   * (Required for Pact Publishing) Directory where pactConfig.groovy is located.
+   * This path is relative to the Jenkins job's effective workspace for this Jenkinsfile.
+   * Since this Jenkinsfile is at the root of 'sample-app', and assuming pactConfig.groovy
+   * is also at the root of 'sample-app', this should be '.'.
+   * This will be used by publishPactContracts's own 'workspaceDir' parameter.
+   */
+  pactConfigWorkspaceDir: '.',
+
+  // Add other future global configurations here, for example:
+  // mailRecipients: 'team@example.com',
+  // slackChannel: '#ci-alerts',
+  // customBuildArgs: '--refresh-dependencies' // Example for Gradle/Maven
+]
+
+// Execute the standard pipeline defined in the shared library
+standardPipeline(pipelineConfig)

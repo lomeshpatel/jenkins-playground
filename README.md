@@ -1,12 +1,38 @@
-# Jenkins Shared Library and Job DSL Example
+# Jenkins Shared Library and Standardized Pipeline Framework
 
 ## Overview
 
-This project provides a basic framework for using a Jenkins Shared Library and Job DSL to define and manage Jenkins pipelines. It includes:
+This project provides a robust framework for standardizing Jenkins CI/CD pipelines using a combination of a **Job DSL seed job**, a **Shared Library**, and a convention of placing a minimal `Jenkinsfile` in each application repository.
 
-- A shared library with reusable functions for building, testing, deploying a sample application, and publishing Pact contracts. This library demonstrates loading external configuration from a Groovy script within the application's directory.
-- Job DSL scripts to define Jenkins pipelines.
-- A sample Gradle application that can be built, tested, and deployed by the pipelines, along with placeholder Pact contracts and an example `pactConfig.groovy` file.
+The goal is to enable rapid onboarding of new applications with pre-defined, best-practice pipeline stages, while still allowing for customization.
+
+## Core Architecture
+
+The framework operates on the following principles:
+
+1.  **Job DSL for Pipeline Generation**:
+    *   A seed job in Jenkins (configured via `jobs/samplePipeline.groovy` in this repository) is responsible for discovering application repositories or being manually configured to create pipeline jobs in Jenkins.
+    *   Instead of defining the full pipeline logic in Job DSL, it configures the generated Jenkins job to fetch its pipeline definition from an SCM (Source Code Management) source, specifically a `Jenkinsfile` within the application's repository.
+
+2.  **Application Repository `Jenkinsfile`**:
+    *   Each application repository that needs a CI/CD pipeline will contain a very minimal `Jenkinsfile`.
+    *   This `Jenkinsfile` primarily does two things:
+        1.  Imports this shared library (e.g., `@Library('my-shared-library@main') _`).
+        2.  Calls the main entry point function from the shared library, `standardPipeline(pipelineConfig)`, passing a configuration map.
+
+3.  **Shared Library (`standardPipeline`)**:
+    *   The `vars/standardPipeline.groovy` script is the heart of the pipeline logic.
+    *   It receives the `pipelineConfig` map from the application's `Jenkinsfile`.
+    *   It dynamically detects the build tool (Gradle, Maven, NPM) used by the application.
+    *   It orchestrates a sequence of standard stages: Initialize, Build, Test, Pact Publish (optional), and Deploy.
+    *   It calls other tool-specific scripts (e.g., `buildGradle.groovy`, `testMaven.groovy`) from the `vars/` directory to execute actual commands.
+
+4.  **Tool-Specific Logic**:
+    *   Scripts in `vars/` like `buildGradle.groovy`, `testGradle.groovy`, `deployGradle.groovy`, etc., encapsulate the commands for specific build tools. These can be customized and extended.
+
+5.  **Configuration (`pipelineConfig` and `pactConfig.groovy`)**:
+    *   Global pipeline behavior is controlled by `pipelineConfig` in the application's `Jenkinsfile`.
+    *   Pact publishing specific settings can be further customized via a `pactConfig.groovy` file within the application's directory.
 
 ## Directory Structure
 
@@ -14,100 +40,156 @@ This project provides a basic framework for using a Jenkins Shared Library and J
 .
 ├── README.md               # This file
 ├── jobs/                   # Contains Job DSL scripts
-│   └── samplePipeline.groovy # Defines the sample pipeline
-├── sample-app/             # A sample Gradle project
+│   └── samplePipeline.groovy # Defines how Jenkins jobs are created (points to app Jenkinsfile)
+├── sample-app/             # A sample Gradle project demonstrating usage
+│   ├── Jenkinsfile         # Minimal Jenkinsfile calling standardPipeline
 │   ├── build.gradle        # Gradle build script for the sample app
 │   ├── pactConfig.groovy   # Example external config for Pact publishing
 │   ├── pacts/              # Placeholder Pact contracts
 │   │   └── myconsumer-myprovider.json
-│   ├── src/
-│   │   ├── main/java/com/example/App.java      # Sample Java application
-│   │   └── test/java/com/example/AppTest.java  # Sample unit test
-├── src/                    # For utility classes in the shared library
-│   └── com/example/ConfigUtils.groovy # Utility to load .groovy config files
-└── vars/                   # For global variables and functions (Groovy scripts) in the shared library
-    ├── build.groovy        # Shared library function for building
-    ├── deploy.groovy       # Shared library function for deploying
-    ├── publishPactContracts.groovy # Shared library function for Pact contract publishing
-    └── test.groovy         # Shared library function for testing
+│   └── src/                # Sample Java application source
+├── src/                    # Utility classes for the shared library
+│   └── com/example/
+│       ├── BuildToolDetector.groovy # Detects project's build tool
+│       ├── BuildToolType.groovy     # Enum for build tool types
+│       └── ConfigUtils.groovy       # Utility to load .groovy config files
+└── vars/                   # Global functions and pipeline definitions for the shared library
+    ├── buildGradle.groovy, testGradle.groovy, deployGradle.groovy # Gradle steps
+    ├── buildMaven.groovy, testMaven.groovy, deployMaven.groovy   # Maven placeholder steps
+    ├── buildNpm.groovy, testNpm.groovy, deployNpm.groovy       # NPM placeholder steps
+    ├── publishPactContracts.groovy # Function for Pact contract publishing
+    └── standardPipeline.groovy     # Main pipeline orchestration logic
 ```
 
-## Shared Library Functions
+## Shared Library Components
 
-This project defines the following global functions in the `vars/` directory:
+### 1. `vars/standardPipeline.groovy`
+This is the main entry point for pipelines defined in application `Jenkinsfile`s.
+-   **Signature**: `def call(Map config = [:])`
+-   **`config` Map Parameters**:
+    -   `workspaceDir` (String, Required): Path relative to the Jenkins job's workspace root that points to the application's root directory (where build files like `build.gradle`, `pom.xml`, or `package.json` are located). For example, if a Jenkins job checks out a Git repository named `my-app` and this repository contains the `Jenkinsfile` at its root, `workspaceDir` should be set to `'.'`. If the job checks out a larger repository (like this one) and `my-app` is a subdirectory (e.g., `sample-app`), then `workspaceDir` should be `'sample-app'`. This directory is also where `pactConfig.groovy` is expected.
+    -   `pactBrokerTokenCredentialId` (String, Optional but Required for Pact Publish): Jenkins credential ID for the Pact Broker token. If provided, the 'Pact Publish' stage will be active.
+    -   Other custom parameters can be added and utilized within `standardPipeline` or passed to tool-specific scripts.
+-   **Standard Stages Executed**:
+    1.  `Initialize`: Detects the build tool. Fails if no known build tool is found in `workspaceDir`.
+    2.  `Build`: Executes the build using the detected tool (e.g., `buildGradle`).
+    3.  `Test`: Executes tests using the detected tool (e.g., `testGradle`).
+    4.  `Pact Publish`: (Conditional) Publishes Pact contracts if `pactBrokerTokenCredentialId` is provided. Uses `publishPactContracts.groovy`.
+    5.  `Deploy`: Executes deployment using the detected tool (e.g., `deployGradle`).
+-   **Operation**:
+    -   Uses `BuildToolDetector.detect(this, appWorkspace)` to determine the build system.
+    -   Executes build, test, and deploy commands within the context of `appWorkspace` (e.g., `dir(appWorkspace) { buildGradle() }`).
 
-- **`build(Map config = [:])`**, **`test(Map config = [:])`**, **`deploy(Map config = [:])`**:
-    - Basic placeholder functions that print messages. In a real scenario, these would execute Gradle or other build tool commands.
+### 2. `vars/publishPactContracts.groovy`
+Handles publishing of Pact contracts to a Pact Broker.
+-   **Parameter Resolution**: See detailed "Pact Publishing Configuration" section below.
+-   Key direct parameter: `brokerTokenCredentialId`.
+-   Uses `ConfigUtils.loadPactConfig(this, workspaceDir)` to load `pactConfig.groovy`.
 
-- **`publishPactContracts(Map params)`**:
-    - Purpose: Publishes Pact contract files to a Pact Broker.
-    - **Parameter Resolution Strategy**:
-        The function resolves its operational parameters using the following order of precedence (highest to lowest):
-        1.  **Direct Parameters**: Values passed directly in the `params` map when calling `publishPactContracts` in the Jenkinsfile.
-        2.  **External Configuration (`pactConfig.groovy`)**: Values loaded from a `pactConfig.groovy` file located in the directory specified by the `workspaceDir` parameter (or its default).
-        3.  **Dynamic Fallbacks**: Environment variables available in the Jenkins build context (e.g., `env.JOB_NAME` for `applicationName`, `env.BUILD_NUMBER` for `version`).
-        4.  **Function Defaults**: Predefined defaults within the `publishPactContracts` function itself (e.g., `pactFilesDir` defaults to `'pacts'`).
-    - **Key Parameters**:
-        - `brokerTokenCredentialId` (String, **Required as a direct parameter**): The ID of the Jenkins "Secret text" credential storing your Pact Broker API token. This is considered sensitive and should always be passed directly from the Jenkinsfile or job configuration.
-        - `workspaceDir` (String, Optional): The path, relative to the Jenkins job's workspace root, to the directory containing the `pactConfig.groovy` file and from which `pactFilesDir` (if relative) will be resolved. Defaults to `.` (current directory, usually the job workspace root). The `pact-broker` CLI command will also be executed from this directory.
-        - `brokerBaseUrl` (String): Base URL of the Pact Broker.
-        - `applicationName` (String): Name of the consumer application.
-        - `version` (String): Version of the consumer application.
-        - `pactFilesDir` (String): Directory containing Pact JSON files. If relative, it's resolved against `workspaceDir`.
-        - `tags` (String or List): Comma-separated string or a List of tags for the Pacticipant version.
-    - **External Configuration (`pactConfig.groovy`)**:
-        - **Location**: Expected to be in the directory defined by the `workspaceDir` parameter (e.g., `sample-app/pactConfig.groovy` if `workspaceDir` is `sample-app`).
-        - **Format**: A Groovy script that returns a `Map`. See `sample-app/pactConfig.groovy` for an example.
-        - **Recommended Settings**: `applicationName`, `version`, `pactFilesDir`, `tags`, `brokerBaseUrl`.
-        - **Security Note**: **Do NOT store `brokerTokenCredentialId` in `pactConfig.groovy`**. This ID should be passed directly to `publishPactContracts` from the Jenkins pipeline configuration.
-    - **Prerequisites**: Requires the `pact-broker` CLI tool to be installed on the Jenkins agent (see "Prerequisites for Pact Publishing" below).
+### 3. Tool-Specific Scripts (`vars/*Gradle.groovy`, `*Maven.groovy`, `*Npm.groovy`)
+These scripts contain the actual commands for building, testing, and deploying for each supported tool. They are currently placeholders for Maven and NPM but functional for Gradle's `./gradlew` commands. They can be extended with more sophisticated logic (e.g., handling custom arguments from `config`).
 
-## Prerequisites for Pact Publishing
+### 4. `src/com/example/BuildToolType.groovy`
+An `enum` defining the supported build tools: `GRADLE`, `MAVEN`, `NPM`, `UNKNOWN`.
 
-- **`pact-broker` CLI**: The `pact-broker` command-line tool must be installed and available in the `PATH` on any Jenkins agent that will execute the `publishPactContracts` step.
-    - Installation instructions: [Pact Broker Client CLI Installation](https://github.com/pact-foundation/pact_broker-client#installation)
-- **Pact Broker Token**: An API token for your Pact Broker.
-    - Store this as a **Secret text** credential in Jenkins (Manage Jenkins -> Credentials).
-    - Use the ID of this credential for the `brokerTokenCredentialId` parameter.
-    - Scope credentials appropriately.
+### 5. `src/com/example/BuildToolDetector.groovy`
+-   **Class**: `BuildToolDetector`
+-   **Method**: `static BuildToolType detect(def script, String workspacePath = '.')`
+-   **Functionality**: Checks for the presence of known build files (`build.gradle`, `build.gradle.kts` for Gradle; `pom.xml` for Maven; `package.json` for NPM) in the directory specified by `workspacePath` (relative to the Jenkins job's main workspace). It uses `script.fileExists()` within a `script.dir(workspacePath)` context.
 
-## Jenkins Configuration
+### 6. `src/com/example/ConfigUtils.groovy`
+-   **Class**: `ConfigUtils`
+-   **Method**: `static Map loadPactConfig(def script, String workspacePath = '.')`
+-   **Functionality**: Loads a Groovy script (expected to return a Map, e.g., `pactConfig.groovy`) from `${workspacePath}/pactConfig.groovy`.
 
-(Sections for Shared Library, Job DSL Plugin, and Seed Job remain largely the same but ensure `my-shared-library` is used as the library name example).
+## Application Repository Setup (`Jenkinsfile`)
 
-### 1. Configure Shared Library
-   (Ensure name is `my-shared-library` and repository URL points to this project)
+Each application repository should contain a `Jenkinsfile` at its root with the following content:
 
-### 2. Configure Job DSL Plugin
-   (Standard instructions)
-
-### 3. Create a Seed Job
-   (Standard instructions, ensuring DSL scripts path is `jobs/**/*.groovy`)
-
-## Running the Sample Pipeline
-
-1.  **Run the Seed Job**: This processes `jobs/samplePipeline.groovy` and creates/updates the `sample-pipeline` Jenkins job.
-2.  **Find the Sample Pipeline**: The `sample-pipeline` job will appear on your Jenkins dashboard.
-3.  **Run the Sample Pipeline**: Click **Build Now**. It will execute:
-    *   **Build, Test, Deploy Stages**: Print messages.
-    *   **Pact Publish Stage**: Calls `publishPactContracts`.
-        - It is configured to use `workspaceDir: 'sample-app'`, so it will look for `sample-app/pactConfig.groovy`.
-        - `brokerTokenCredentialId` is passed directly (e.g., `'pact-broker-token'`). You **must** create a Jenkins credential with this ID.
-        - Other parameters like `brokerBaseUrl`, `applicationName`, `version`, `pactFilesDir`, and `tags` will be sourced from `sample-app/pactConfig.groovy`, or dynamic fallbacks if not present there.
-        - The `sample-app/pactConfig.groovy` has placeholder values. You'll need to set `brokerBaseUrl` there (or override it directly in the pipeline) and ensure the `pact-broker` CLI is installed for this stage to succeed.
-
-**Example `publishPactContracts` call in `jobs/samplePipeline.groovy`:**
 ```groovy
-publishPactContracts(
-    brokerTokenCredentialId: 'pact-broker-token', // REQUIRED
-    workspaceDir: 'sample-app' // Specifies location of pactConfig.groovy
-    // Other params can be added here to override pactConfig.groovy or dynamic values
-)
+@Library('my-shared-library@main') _ // Adjust library name and version/branch as needed
+
+// Configuration for the standardPipeline
+def pipelineConfig = [
+  /**
+   * (Required) Application's root directory within the Jenkins job's workspace.
+   * If this Jenkinsfile is at the root of your application code checkout, set this to '.'.
+   */
+  workspaceDir: '.',
+
+  /**
+   * (Required for Pact Publishing) Jenkins credential ID for the Pact Broker token.
+   * Create a "Secret Text" credential in Jenkins and use its ID here.
+   */
+  pactBrokerTokenCredentialId: 'pact-broker-token', // REPLACE with your actual credential ID
+
+  // --- Optional Parameters ---
+  // Add any other parameters needed by your specific pipeline steps or shared library logic.
+  // Example:
+  // customBuildArgs: '--info --stacktrace',
+  // deploymentEnvironment: 'staging'
+]
+
+// Execute the standard pipeline from the shared library
+standardPipeline(pipelineConfig)
 ```
 
-To make the pipeline fully functional:
-- Modify `vars/*.groovy` (build, test, deploy) to execute actual Gradle commands (e.g., `sh "./gradlew build -p sample-app"`).
-- Ensure your tests in `sample-app` generate Pact contracts into the `sample-app/pacts` directory (or update `pactFilesDir` in `sample-app/pactConfig.groovy`).
-- Update `sample-app/pactConfig.groovy` with your actual Pact Broker URL and any other desired settings.
-- Create the 'pact-broker-token' (or your chosen ID) secret text credential in Jenkins.
-- Install `pact-broker` CLI on your Jenkins agents.
+**Key `pipelineConfig` Explanations:**
+-   `workspaceDir`: This tells `standardPipeline` where your application's main build files (like `build.gradle` or `pom.xml`) and your `pactConfig.groovy` are located, relative to the root of the SCM checkout for this `Jenkinsfile`. If this `Jenkinsfile` is at the root of your application code, `workspaceDir: '.'` is correct.
+-   `pactBrokerTokenCredentialId`: Essential for enabling the 'Pact Publish' stage.
+
+## Job DSL Configuration (`jobs/samplePipeline.groovy`)
+
+The `jobs/samplePipeline.groovy` script in this repository provides an example of how to generate a Jenkins pipeline job that uses the SCM-driven approach:
+-   It defines a `pipelineJob`.
+-   It configures `cpsScm` to point to an application repository (for this example, it uses a placeholder for this repository itself).
+-   It specifies `scriptPath('sample-app/Jenkinsfile')` (or just `Jenkinsfile` if the SCM points directly to an app repo root). This tells Jenkins where to find the `Jenkinsfile` within that repository.
+-   **In a real-world scenario**: You would adapt this Job DSL script to:
+    -   Discover multiple application repositories (e.g., from GitHub organizations, Bitbucket projects, or a static list).
+    -   For each discovered repository, generate a `pipelineJob` configured to use the `Jenkinsfile` from that specific repository.
+
+## Pact Publishing Configuration
+
+The `publishPactContracts` function (called by `standardPipeline`) handles Pact contract publishing. Its configuration is resolved as follows:
+1.  **Direct Parameters to `publishPactContracts`**:
+    -   `brokerTokenCredentialId`: Passed from `pipelineConfig.pactBrokerTokenCredentialId`.
+    -   `workspaceDir`: Passed as `appWorkspace` from `standardPipeline` (which is `pipelineConfig.workspaceDir` from the `Jenkinsfile`). This is the directory where `pactConfig.groovy` is located, and from which `pactFilesDir` (if relative in `pactConfig.groovy`) is resolved. The `pact-broker` CLI commands are also executed from this directory.
+2.  **`pactConfig.groovy`**:
+    -   **Location**: Must be in the directory specified by `pipelineConfig.workspaceDir` (e.g., `sample-app/pactConfig.groovy`).
+    -   **Content**: A Groovy script returning a map. Can define:
+        -   `brokerBaseUrl` (String): URL of the Pact Broker.
+        -   `applicationName` (String): Consumer application name.
+        -   `version` (String): Consumer application version.
+        -   `pactFilesDir` (String): Directory containing pact files, relative to `pactConfig.groovy`'s location.
+        -   `tags` (List or String): Tags for the pacticipant version.
+        -   **DO NOT** store `brokerTokenCredentialId` here.
+3.  **Dynamic Fallbacks**: If not found in direct params or `pactConfig.groovy`, `applicationName` can fall back to `env.JOB_NAME`, and `version` to `env.BUILD_NUMBER`.
+4.  **Function Defaults**: `pactFilesDir` defaults to `'pacts'` if not specified anywhere else.
+
+## Jenkins Setup Prerequisites
+
+1.  **Shared Library Configuration**:
+    -   In Jenkins: Manage Jenkins -> Configure System -> Global Pipeline Libraries.
+    -   Add a new library.
+    -   **Name**: `my-shared-library` (or your chosen name, ensure it matches `@Library` in `Jenkinsfile`).
+    -   **Default version**: `main` (or your default branch/tag).
+    -   **Retrieval method**: Modern SCM.
+    -   **Source Code Management**: Git, with the URL of this `jenkins-pipelines` repository.
+2.  **Job DSL Plugin**: Ensure the "Job DSL" plugin is installed in Jenkins.
+3.  **Seed Job**: Create a Jenkins job (e.g., Freestyle or Pipeline) that uses the "Process Job DSLs" build step. Configure it to read `jobs/samplePipeline.groovy` from this repository's SCM. Running this seed job will generate the `sample-app-pipeline-from-scm` job.
+4.  **Pact Broker CLI**: For Pact publishing, the `pact-broker` CLI must be installed and in the `PATH` on Jenkins agents that will run the 'Pact Publish' stage.
+5.  **Credentials**:
+    -   Create a "Secret text" credential in Jenkins for your Pact Broker token. Its ID must match what's provided in `pipelineConfig.pactBrokerTokenCredentialId`.
+    -   If your Git repository for the shared library or application code is private, configure appropriate Git credentials in Jenkins.
+
+## Using the Framework
+
+1.  Set up Jenkins with the shared library and seed job as described above.
+2.  Run the seed job to generate application pipeline jobs.
+3.  For each application:
+    -   Ensure it has a `Jenkinsfile` at its root, as per the template provided.
+    -   Customize `pipelineConfig` in the `Jenkinsfile`, especially `workspaceDir` and `pactBrokerTokenCredentialId`.
+    -   If using Pact, create a `pactConfig.groovy` in the `workspaceDir` with broker details, application name, version, etc.
+    -   Ensure the build tool is supported (Gradle, Maven, NPM) and build files are present in `workspaceDir`.
+4.  Trigger the generated application pipeline job in Jenkins.
+```
