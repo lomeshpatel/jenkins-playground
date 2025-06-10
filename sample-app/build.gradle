@@ -25,6 +25,8 @@ task testProject(type: Test) {
     doLast {
         println 'Running test task'
     }
+    // Pact contract generation would typically be part of the test execution
+    // using a library like Pact JVM.
 }
 
 task deployProject {
