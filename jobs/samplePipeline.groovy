@@ -31,14 +31,14 @@ pipelineJob('sample-app-pipeline-from-scm') { // Renamed for clarity
           remote {
             // Replace with the actual Git URL of this 'jenkins-pipelines' repository
             // or the application repository you intend to build.
-            url('https://github.com/lomeshpatel/jenkins-playground.git')
+            url('https://github.com/your-org/your-jenkins-pipelines-repo.git')
             // credentialsId('your-git-credentials-id') // Uncomment and set if the repository is private
           }
           // branch('*/main') // Example: build any branch named 'main'
           // Or use a parameter: branch('${SCM_BRANCH}')
           // For simplicity, we'll default to discovering all branches and letting Jenkins pick.
           // Or, specify a concrete branch like 'main' if not parameterizing.
-          branches('*/jenkins-pipeline-scaffolding') // Monitor the main branch. Adjust as needed.
+          branches('*/main') // Monitor the main branch. Adjust as needed.
         }
       }
       // scriptPath: Path to the Jenkinsfile within the SCM repository defined above.

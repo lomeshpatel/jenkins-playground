@@ -1,4 +1,4 @@
-@Library('my-shared-library') _ // Ensure 'my-shared-library' matches your Jenkins Global Pipeline Library name
+@Library('my-shared-library@main') _ // Ensure 'my-shared-library' matches your Jenkins Global Pipeline Library name
                                    // '@main' assumes you are working on the main branch of the shared library.
                                    // Adjust if using a different branch or version tag.
 
@@ -21,7 +21,7 @@ def pipelineConfig = [
    * (Required for Pact Publishing) Jenkins credential ID for the Pact Broker token.
    * This should be a "Secret Text" credential configured in Jenkins.
    */
-  pactBrokerTokenCredentialId: '', // Replace with your actual Jenkins credential ID
+  pactBrokerTokenCredentialId: 'pact-broker-token', // Replace with your actual Jenkins credential ID
 
   /**
    * (Required for Pact Publishing) Directory where pactConfig.groovy is located.

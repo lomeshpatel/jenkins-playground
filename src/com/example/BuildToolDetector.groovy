@@ -2,32 +2,29 @@ package com.example
 
 class BuildToolDetector {
   /**
-   * Detects the build tool used in the specified workspace path.
-   * @param script The Jenkins pipeline script object, needed for file operations.
-   * @param workspacePath The path within the Jenkins workspace to check for build files.
+   * Determines the BuildToolType based on the presence of characteristic build files.
+   * @param hasGradle True if Gradle build files (build.gradle or build.gradle.kts) exist.
+   * @param hasMaven True if a pom.xml file exists.
+   * @param hasNpm True if a package.json file exists.
    * @return BuildToolType enum value.
    */
-  static BuildToolType detect(def script, String workspacePath = '.') {
-    script.echo "[BuildToolDetector] Checking for build tool in workspace path: ${workspacePath}"
-    // Ensure workspacePath is handled correctly if it's not just "."
-    // fileExists expects paths relative to the overall workspace root if not prepended by workspacePath
-    // However, 'script.dir(workspacePath)' changes context for fileExists.
+  static BuildToolType determineBuildTool(boolean hasGradle, boolean hasMaven, boolean hasNpm) {
+    // Using script.echo for logging in library classes is not typical if 'script' object isn't passed.
+    // For a utility class like this, standard System.out.println might be used for local debugging,
+    // but it won't show in Jenkins logs. Pipeline steps (like 'echo') are preferred for Jenkins output.
+    // If logging from here is needed in Jenkins, the 'script' object would have to be passed.
+    // For now, this method is pure logic based on boolean inputs.
+    // Example for local debugging (won't show in Jenkins):
+    // System.out.println("[BuildToolDetector] Determining tool: Gradle=${hasGradle}, Maven=${hasMaven}, NPM=${hasNpm}")
 
-    def buildTool = BuildToolType.UNKNOWN
-    script.dir(workspacePath) { // Change context to the specified workspace path
-      if (script.fileExists('build.gradle') || script.fileExists('build.gradle.kts')) {
-        script.echo "[BuildToolDetector] Found Gradle build file."
-        buildTool = BuildToolType.GRADLE
-      } else if (script.fileExists('pom.xml')) {
-        script.echo "[BuildToolDetector] Found Maven build file."
-        buildTool = BuildToolType.MAVEN
-      } else if (script.fileExists('package.json')) {
-        script.echo "[BuildToolDetector] Found NPM build file (package.json)."
-        buildTool = BuildToolType.NPM
-      } else {
-        script.echo "[BuildToolDetector] No recognized build tool detected."
-      }
+    if (hasGradle) {
+      return BuildToolType.GRADLE
+    } else if (hasMaven) {
+      return BuildToolType.MAVEN
+    } else if (hasNpm) {
+      return BuildToolType.NPM
+    } else {
+      return BuildToolType.UNKNOWN
     }
-    return buildTool
   }
 }
