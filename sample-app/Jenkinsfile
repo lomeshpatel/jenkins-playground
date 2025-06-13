@@ -21,7 +21,7 @@ def pipelineConfig = [
    * (Required for Pact Publishing) Jenkins credential ID for the Pact Broker token.
    * This should be a "Secret Text" credential configured in Jenkins.
    */
-  pactBrokerTokenCredentialId: 'pact-broker-token', // Replace with your actual Jenkins credential ID
+  pactBrokerTokenCredentialId: '', // Replace with your actual Jenkins credential ID
 
   /**
    * (Required for Pact Publishing) Directory where pactConfig.groovy is located.
