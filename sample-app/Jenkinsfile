@@ -15,7 +15,7 @@ def pipelineConfig = [
    * Since this Jenkinsfile is located at the root of the 'sample-app' checkout (or context),
    * '.' means the current directory ('sample-app').
    */
-  workspaceDir: '.',
+  workspaceDir: 'sample-app',
 
   /**
    * (Required for Pact Publishing) Jenkins credential ID for the Pact Broker token.
