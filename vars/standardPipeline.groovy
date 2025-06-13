@@ -24,10 +24,10 @@ def call(Map config = [:]) {
       timestamps()
     }
 
-    environment {
+//    environment {
       // Example: PASS_PACT_BROKER_TOKEN = credentials(config.pactBrokerTokenCredentialId ?: '')
       // This needs to be more dynamic based on whether pactBrokerTokenCredentialId is actually set.
-    }
+//    }
 
     stages {
       stage('Initialize') {
